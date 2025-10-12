@@ -1,0 +1,668 @@
+{
+  "info": {
+    "name": "Immudb Inventory Management API",
+    "description": "Complete API collection for testing the Immudb-based inventory management system with time travel capabilities",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "api_key",
+      "value": "supersecretapikey",
+      "type": "string"
+    },
+    {
+      "key": "test_sku",
+      "value": "TEST-001",
+      "type": "string"
+    },
+    {
+      "key": "test_timestamp",
+      "value": "2025-10-12T15:00:00.000Z",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/",
+          "host": ["{{base_url}}"],
+          "path": [""]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Products",
+      "item": [
+        {
+          "name": "Create Product - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has product data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('product');",
+                  "    pm.expect(jsonData).to.have.property('immudb_tx_hash');",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "});",
+                  "",
+                  "pm.test('Product has required fields', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    const product = jsonData.product;",
+                  "    pm.expect(product).to.have.property('sku');",
+                  "    pm.expect(product).to.have.property('name');",
+                  "    pm.expect(product).to.have.property('price');",
+                  "    pm.expect(product).to.have.property('created_at');",
+                  "});",
+                  "",
+                  "// Store the SKU for other tests",
+                  "if (pm.response.json().product) {",
+                  "    pm.collectionVariables.set('created_sku', pm.response.json().product.sku);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"{{test_sku}}\",\n  \"name\": \"Test Gaming Laptop\",\n  \"description\": \"High-performance laptop for testing\",\n  \"price\": 2500.00,\n  \"quantity\": 5,\n  \"category\": \"Electronics\",\n  \"supplier\": \"TestCorp\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Product - Duplicate Error",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 409', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});",
+                  "",
+                  "pm.test('Response contains error message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('already exists');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"{{test_sku}}\",\n  \"name\": \"Duplicate Product\",\n  \"description\": \"This should fail\",\n  \"price\": 100.00,\n  \"quantity\": 1,\n  \"category\": \"Test\",\n  \"supplier\": \"TestCorp\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Create Product - Missing Fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response contains validation error', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('Missing required');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sku\": \"INCOMPLETE-001\",\n  \"name\": \"Incomplete Product\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/products",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has product data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('sku');",
+                  "    pm.expect(jsonData).to.have.property('name');",
+                  "    pm.expect(jsonData).to.have.property('price');",
+                  "    pm.expect(jsonData).to.have.property('current_stock');",
+                  "});",
+                  "",
+                  "pm.test('Product SKU matches request', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.sku).to.eql('{{test_sku}}');",
+                  "});",
+                  "",
+                  "pm.test('Has verification status', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('immudb_verification_status');",
+                  "    pm.expect(jsonData.immudb_verification_status).to.eql('OK');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{test_sku}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{test_sku}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Get Product - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response contains not found message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/NONEXISTENT-001",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "NONEXISTENT-001"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Inventory",
+      "item": [
+        {
+          "name": "Time Travel Query - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has time travel data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('product');",
+                  "    pm.expect(jsonData).to.have.property('historical_stock_at_timestamp');",
+                  "    pm.expect(jsonData).to.have.property('target_timestamp');",
+                  "    pm.expect(jsonData).to.have.property('transactions_included');",
+                  "});",
+                  "",
+                  "pm.test('Product SKU matches request', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.product.sku).to.eql('{{test_sku}}');",
+                  "});",
+                  "",
+                  "pm.test('Timestamp is valid', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.target_timestamp).to.eql('{{test_timestamp}}');",
+                  "});",
+                  "",
+                  "pm.test('Has verification status', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('immudb_verification_status');",
+                  "    pm.expect(jsonData.immudb_verification_status).to.eql('OK');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/time-travel/{{test_sku}}?timestamp={{test_timestamp}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inventory", "time-travel", "{{test_sku}}"],
+              "query": [
+                {
+                  "key": "timestamp",
+                  "value": "{{test_timestamp}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Time Travel Query - Missing Timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response contains error message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('Timestamp parameter is required');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/time-travel/{{test_sku}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inventory", "time-travel", "{{test_sku}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Time Travel Query - Invalid Timestamp",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 400', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test('Response contains validation error', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('Invalid timestamp format');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/time-travel/{{test_sku}}?timestamp=invalid-timestamp",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inventory", "time-travel", "{{test_sku}}"],
+              "query": [
+                {
+                  "key": "timestamp",
+                  "value": "invalid-timestamp"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Time Travel Query - Product Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response contains not found message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/inventory/time-travel/NONEXISTENT-001?timestamp={{test_timestamp}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "inventory", "time-travel", "NONEXISTENT-001"],
+              "query": [
+                {
+                  "key": "timestamp",
+                  "value": "{{test_timestamp}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Audit",
+      "item": [
+        {
+          "name": "Verify Transaction - Success",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response has verification data', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('transaction');",
+                  "    pm.expect(jsonData).to.have.property('immudb_tx_id');",
+                  "    pm.expect(jsonData).to.have.property('verification_status');",
+                  "});",
+                  "",
+                  "pm.test('Verification status is successful', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.verification_status).to.include('Verified Successfully');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/audit/verify/{{created_transaction_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "audit", "verify", "{{created_transaction_id}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Transaction - Not Found",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 404', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test('Response contains not found message', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('not found');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "{{api_key}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/audit/verify/nonexistent-transaction-id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "audit", "verify", "nonexistent-transaction-id"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Missing API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Response contains auth error', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('API key');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{test_sku}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{test_sku}}"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid API Key",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status code is 401', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test('Response contains auth error', function () {",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property('message');",
+                  "    pm.expect(jsonData.message).to.include('API key');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-API-Key",
+                "value": "invalid-key"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/products/{{test_sku}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "products", "{{test_sku}}"]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Set dynamic timestamp for time travel tests",
+          "const now = new Date();",
+          "pm.collectionVariables.set('test_timestamp', now.toISOString());",
+          "",
+          "// Generate unique test SKU",
+          "const timestamp = Date.now();",
+          "pm.collectionVariables.set('test_sku', `TEST-${timestamp}`);"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test setup",
+          "pm.test('Response time is less than 5000ms', function () {",
+          "    pm.expect(pm.response.responseTime).to.be.below(5000);",
+          "});",
+          "",
+          "pm.test('Response has valid JSON', function () {",
+          "    pm.response.to.be.json;",
+          "});"
+        ]
+      }
+    }
+  ]
+}

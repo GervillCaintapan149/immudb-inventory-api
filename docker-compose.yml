@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  # Immudb Database Service
+  immudb:
+    image: codenotary/immudb:latest
+    container_name: immudb-inventory
+    ports:
+      - "3322:3322"  # gRPC port
+      - "8080:8080"  # Web console port
+    environment:
+      - IMMUDB_ADDRESS=0.0.0.0
+      - IMMUDB_PORT=3322
+      - IMMUDB_WEBSERVER_ADDRESS=0.0.0.0
+      - IMMUDB_WEBSERVER_PORT=8080
+    volumes:
+      - immudb_data:/var/lib/immudb
+    networks:
+      - immudb-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Node.js API Service
+  api:
+    build: .
+    container_name: immudb-api
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - IMMUDB_HOST=immudb
+      - IMMUDB_PORT=3322
+      - IMMUDB_USER=immudb
+      - IMMUDB_PASSWORD=immudb
+      - API_KEY=supersecretapikey
+    depends_on:
+      immudb:
+        condition: service_healthy
+    networks:
+      - immudb-network
+    restart: unless-stopped
+    volumes:
+      - ./src:/app/src
+      - ./server.js:/app/server.js
+      - ./package.json:/app/package.json
+    command: ["node", "server.js"]
+
+volumes:
+  immudb_data:
+    driver: local
+
+networks:
+  immudb-network:
+    driver: bridge

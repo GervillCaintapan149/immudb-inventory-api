@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Immudb Database Service
+  immudb:
+    image: codenotary/immudb:latest
+    container_name: immudb-inventory-prod
+    ports:
+      - "3322:3322"
+      - "8080:8080"
+    environment:
+      - IMMUDB_ADDRESS=0.0.0.0
+      - IMMUDB_PORT=3322
+      - IMMUDB_WEBSERVER_ADDRESS=0.0.0.0
+      - IMMUDB_WEBSERVER_PORT=8080
+      - IMMUDB_LOGLEVEL=info
+    volumes:
+      - immudb_data_prod:/var/lib/immudb
+    networks:
+      - immudb-network-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Node.js API Service
+  api:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: immudb-api-prod
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - IMMUDB_HOST=immudb
+      - IMMUDB_PORT=3322
+      - IMMUDB_USER=immudb
+      - IMMUDB_PASSWORD=immudb
+      - API_KEY=${API_KEY:-supersecretapikey}
+    depends_on:
+      immudb:
+        condition: service_healthy
+    networks:
+      - immudb-network-prod
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.1'
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Nginx Reverse Proxy (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: immudb-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    networks:
+      - immudb-network-prod
+    restart: unless-stopped
+
+volumes:
+  immudb_data_prod:
+    driver: local
+
+networks:
+  immudb-network-prod:
+    driver: bridge
