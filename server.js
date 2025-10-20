@@ -1,32 +1,85 @@
 // server.js
 const express = require('express');
 const bodyParser = require('body-parser');
-const productRoutes = require('./src/routes/product-routes'); // Added 's'
-const inventoryRoutes = require('./src/routes/inventory-routes'); // Added 's'
+const productRoutes = require('./src/routes/product-routes');
+const inventoryRoutes = require('./src/routes/inventory-routes');
+const adminRoutes = require('./src/routes/admin-routes');
+const publicRoutes = require('./src/routes/public-routes');
 const {
-  authenticateApiKey
-} = require('./src/middleware/auth'); // Import auth middleware
+  authenticateApiKey,
+  authenticate,
+  requirePermission,
+  rateLimits
+} = require('./src/middleware/auth');
+const { AuditLogger, AUDIT_EVENTS } = require('./src/utils/audit-logger');
 const dotenv = require('dotenv');
 
 dotenv.config(); // Load environment variables from .env file
 
+// Initialize admin system
+const { UserManager } = require('./src/utils/user-manager');
+const CertificateManager = require('./src/utils/certificate-manager');
+
+// Initialize CA on startup
+CertificateManager.initializeCA().catch(console.error);
+
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Trust proxy for rate limiting
+app.set('trust proxy', 1);
+
 app.use(bodyParser.json());
+
+// Serve static files for customer portal
+app.use('/public', express.static('public'));
+
+// Apply general rate limiting
+app.use(rateLimits.lenient);
 
 // Basic route to check if the server is running
 app.get('/', (req, res) => {
-  res.send('Immudb Inventory Management API is running!');
+  // Check if request accepts HTML (browser request)
+  if (req.accepts('html')) {
+    // Redirect browsers to customer portal
+    res.redirect('/public/');
+  } else {
+    // Return JSON for API clients
+    res.json({
+      message: 'ImmuDB Inventory Management API is running!',
+      version: '1.0.0',
+      features: {
+        immutable_ledger: true,
+        certificate_management: true,
+        user_management: true,
+        audit_trails: true,
+        rate_limiting: true,
+        customer_portal: true
+      },
+      customer_portal_url: '/public/',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Serve customer portal index page
+app.get('/portal', (req, res) => {
+  res.redirect('/public/');
+});
+
+app.get('/verify', (req, res) => {
+  res.redirect('/public/');
 });
 
 // Mount the routes
-app.use('/api/products', productRoutes);
-app.use('/api/inventory', inventoryRoutes);
+app.use('/api/admin', adminRoutes); // Admin routes (JWT required)
+app.use('/api/products', productRoutes); // Legacy API key or JWT
+app.use('/api/inventory', inventoryRoutes); // Legacy API key or JWT
+app.use('/public', publicRoutes); // Public routes (no authentication required)
 
 // 5. GET /api/audit/verify/:transaction_id - Verify specific transaction (Immudb low-level verification)
 // This uses a lower-level Immudb verification (verifiedGet) than collection.get.
-app.get('/api/audit/verify/:transaction_id', authenticateApiKey, async (req, res) => {
+app.get('/api/audit/verify/:transaction_id', authenticate, requirePermission('audit.read'), async (req, res) => {
   const {
     transaction_id
   } = req.params;
@@ -54,37 +107,7 @@ app.get('/api/audit/verify/:transaction_id', authenticateApiKey, async (req, res
 
       const transaction = bufferToObj(getResponse.value);
 
-      // Now, use the lower-level client.verifiedGetAt for immutable verification.
-      // This is a more explicit way to show verification beyond just collection.get.
-      // It retrieves the raw entry by its hash or index.
-      // For collection documents, `verifiedGet` on the key verifies the current state.
-      // If we wanted to verify a specific *version* by transaction ID, it gets more complex with collections.
-      // Let's refine this to verify the key-value pair as retrieved.
-      // The collection.get itself performs a verification to ensure the fetched document is correct.
-      // For a transaction_id based verification, Immudb's data model implicitly verifies the data returned by collection.get.
-      // If we were using raw key-value pairs (not collections), `client.verifiedGet` would be more direct.
-
-      // For collection documents, `collection.get` internally uses verified mechanisms.
-      // The `revision` and `transaction.header.id` from the getResponse already provide proof.
-      // We can also use client.verifiedGet to verify the raw key-value pair in the underlying K-V store.
-      // However, `collection.get` is designed to provide this verification for documents.
-
-      // Let's demonstrate verification using the low-level `verifiedGet` against the actual underlying key.
-      // In collections, the actual key stored by Immudb is often internal to the collection.
-      // The `collection.get` already returns `status: 'OK'` and the `revision`, `transaction` objects
-      // if the data is consistent and verifiable.
-
-      // To explicitly show "cryptographic proof" against a low-level key:
-      // The actual key stored in immudb for a collection document is something like `collectionName:key`.
-      // The `collection.get` takes care of this abstraction.
-      // The most direct way to *demonstrate* verification from an API perspective is to rely on the status
-      // provided by `collection.get` and potentially the `revision` metadata.
-
-      // For now, let's assume `collection.get`'s OK status implies verification.
-      // If we *really* wanted to demonstrate `verifiedGetAt`, it would require knowing the exact internal
-      // key and the transaction ID when it was stored, which is usually abstracted by collections.
-      // A robust approach would be to fetch the transaction by key, and if successful, Immudb guarantees
-      // its integrity.
+    
 
       // We can explicitly show verification based on the transaction metadata from the collection.get
       return {
@@ -115,7 +138,7 @@ app.get('/api/audit/verify/:transaction_id', authenticateApiKey, async (req, res
 });
 
 // 6. GET /api/inventory/time-travel/:sku?timestamp=YYYY-MM-DDTHH:mm:ss.sssZ - Get inventory state at specific past timestamp
-app.get('/api/inventory/time-travel/:sku', authenticateApiKey, async (req, res) => {
+app.get('/api/inventory/time-travel/:sku', authenticate, requirePermission('inventory.read'), async (req, res) => {
   const { sku } = req.params;
   const { timestamp } = req.query;
 
@@ -195,6 +218,16 @@ app.get('/api/inventory/time-travel/:sku', authenticateApiKey, async (req, res) 
         console.warn('Error scanning transactions for time travel:', scanError);
         // Continue with historical stock as 0 if scan fails
       }
+
+      // Log time travel query
+      await AuditLogger.logInventoryOperation(
+        AUDIT_EVENTS.TIME_TRAVEL_QUERY,
+        req.user.user_id,
+        req.user.username,
+        sku,
+        req.ip,
+        { target_timestamp: timestamp, transactions_found: relevantTransactions.length }
+      );
 
       return {
         product: {

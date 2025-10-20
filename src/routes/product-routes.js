@@ -6,8 +6,10 @@ const {
   bufferToObj
 } = require('../immudb-client');
 const {
-  authenticateApiKey
+  authenticate,
+  requirePermission
 } = require('../middleware/auth');
+const { AuditLogger, AUDIT_EVENTS } = require('../utils/audit-logger');
 const {
   Buffer
 } = require('buffer');
@@ -16,7 +18,7 @@ const {
 const PRODUCTS_COLLECTION = 'products';
 
 // 1. POST /api/products - Add new product
-router.post('/', authenticateApiKey, async (req, res) => {
+router.post('/', authenticate, requirePermission('products.write'), async (req, res) => {
   const {
     sku,
     name,
@@ -82,7 +84,7 @@ router.post('/', authenticateApiKey, async (req, res) => {
         type: 'IN',
         quantity_change: quantity,
         reason: 'Initial Stock',
-        performed_by: req.headers['x-api-key'] ? 'API Key User' : 'System', 
+        performed_by: req.user.username,
         timestamp: new Date().toISOString()
       };
 
@@ -91,6 +93,16 @@ router.post('/', authenticateApiKey, async (req, res) => {
         key: Buffer.from(transactionKey),
         value: objToBuffer(initialTransaction)
       });
+
+      // Log product creation
+      await AuditLogger.logInventoryOperation(
+        AUDIT_EVENTS.PRODUCT_CREATED,
+        req.user.user_id,
+        req.user.username,
+        sku,
+        req.ip,
+        { product: newProduct }
+      );
 
       return {
         product: newProduct,
@@ -119,7 +131,7 @@ router.post('/', authenticateApiKey, async (req, res) => {
 });
 
 // 2. GET /api/products/:sku - Get current product details with stock level
-router.get('/:sku', authenticateApiKey, async (req, res) => {
+router.get('/:sku', authenticate, requirePermission('products.read'), async (req, res) => {
   const {
     sku
   } = req.params;
